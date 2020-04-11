@@ -153,7 +153,8 @@ all_samples <- tibble(samps=c(infsamp, jefsamp),
        prior=c(rep(c("informative", "Jeffrey's"), each=10000)))
 
 print(ggplot(data=all_samples) + 
-  geom_density(aes(x=samps, fill=prior)) + 
+  stat_density(aes(x=samps, color=prior), 
+               geom="line", position="identity") + 
   # geom_density(aes(x=jefsamp), color="orange") + 
   xlab("number of positive tests")) 
 

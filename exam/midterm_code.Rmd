@@ -1,0 +1,138 @@
+---
+title: "STAT 577 Midterm Exam"
+author: "Tim Farkas"
+date: "4/5/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+```{r Import Libraries, echo=FALSE, results=FALSE}
+library(tidyverse)
+library(R2jags)
+library(epiR)
+```
+
+### Problem 1 
+
+On 2 April, the state Department of Health (NMDOH) reported on the results of 767 new COVID-19 tests. 40 patients tested positive for the disease, and 727 tested negative.
+
+##### 1a)  
+
+Epidemiologists at NM - DOH believe that the prevalence of COVID-19 among the population of New Mexicans is about 0.275%, a little less than 3 out of every thousand people. They think the prevalence of COVID-19 among the population of New Mexicans is unlikely to be any higher than 1.36%. Find a prior reflecting this information that is conjugate with the 2 April daily testing data, and explain how you obtained it.
+
+```{r Prior Elicitation, results = FALSE}
+bb <- epi.betabuster(mode = 0.00275, 
+               conf = 0.99, 
+               greaterthan = FALSE,
+               x = 0.0136)
+
+print(c(alpha = bb$shape1, 
+        beta= bb$shape2))
+```
+
+```{r}
+theta_sim <- seq(0, .02, length.out = 1000)
+beta_prob <- dbeta(theta_sim, bb$shape1, bb$shape2)
+
+p <- ggplot() + 
+  geom_line(aes(x = theta_sim, y = beta_prob)) +
+  geom_vline(xintercept = 0.00275, lty=3) + 
+  xlab("theta") + 
+  ylab("probability density")
+
+print(p)
+```
+
+Using Wesley Johnson's betabuster R function, from the epiR package, we see that a Beta(2.5, 552.9) distribution aligns with with the prior expert knowledge about the prevalence of COVID among New Mexican residents. Checking with the qbeta function shows it worked.
+
+##### 1b) 
+
+**NMDOH has specified criteria for who should be tested for COVID-19, and thus the people being tested can’t be considered a random sample from the population of all New Mexicans — but does that mean it’s not a representative sample? Consider how applicable these priors are to the data we have, and (in one paragraph) discuss which one you would prefer. (If you want to suggest your own prior as a third option, you are free to do so.)**
+
+This is a representative sample, but it doesn't represent what we need it to represent. So no, the informative prior is very much no good, because the wrong information has been elicited from the expert. For an informative prior to be useful, we must find a prior on the proportion of the population *being tested* that has COVID-19, not the population as a whole, because this is what our data are about. 
+
+Because the population being tested must satisfy some criteria in order to be tested, likely showing some minimum set of COVID-like symptoms (fever, dry cough, etc.), it would appear to me fair to argue that the point and boundary estimates given by the expert are too low for our data. The MLE for the prevalence of COVID ($\theta = \frac{40}{767}$ = 0.052 = 5.2%) agrees with this argument, as this is far, far greater than the expert's best guess of 0.275%. 
+
+In this case, I feel as though we really have neither a direct nor an inferential source of prior information for these data, and so I would not use an informative prior, but opt to use the non-informative Jeffrey's prior Beta($\frac{1}{2}$, $\frac{1}{2}$).
+
+##### 1c)
+
+To establish conjugacy:
+
+$$p(\theta|y) = 
+\frac{p(y|\theta)p(\theta)}
+{\int{p(y|\theta)p(\theta)d\theta}}$$
+
+$$= \frac{\binom{n}{y}\theta^y(1 - \theta)^{n - y}\times
+\frac{\Gamma(\alpha + \beta)}{\Gamma(\alpha)\Gamma(\beta)}\theta^{\alpha - 1}(1 - \theta)^{\beta - 1}I_{[0, 1]}(\theta)}
+{\int_0^1{\binom{n}{y}\theta^y(1 - \theta)^{n - y}\times
+\frac{\Gamma(\alpha + \beta)}{\Gamma(\alpha)\Gamma(\beta)}\theta^{\alpha - 1}(1 - \theta)^{\beta - 1}}d\theta}$$
+
+$$= \frac{\theta^y(1 - \theta)^{n - y}\times
+\theta^{\alpha - 1}(1 - \theta)^{\beta - 1}I_{[0, 1]}(\theta)}
+{\int_0^1{\theta^y(1 - \theta)^{n - y}\times
+\theta^{\alpha - 1}(1 - \theta)^{\beta - 1}}d\theta}$$
+
+$$\frac{\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}I_{[0, 1]}(\theta)}{\int_0^1{\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}}d\theta}$$
+
+$$\frac{\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}I_{[0, 1]}(\theta)}
+{\frac{\Gamma(y + \alpha)\Gamma(n + \beta - y)}{\Gamma(\alpha + \beta  + n)}\int_0^1{\frac{\Gamma(\alpha + \beta  + n)}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}}d\theta}$$
+
+$$= \frac{\Gamma(\alpha + \beta  + n )}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}I_{[0, 1]}(\theta)$$
+$$\therefore p(\theta|y) \sim Beta(\alpha + y, \beta + n - y)$$
+So with y = 40, n = 767, $\alpha = 2.5$, and $\beta = 552.9$
+
+$$p(\theta|y) \sim Beta(42.5, 1279.9)$$
+
+##### 1d)
+
+**On 3 April, NMDOH reported results on an additional 854 tests. Analytically find the predictive distribution for the number of positive tests we would expect to see on 3 April, given the 2 April data and the informative prior you obtained in (a). This should be a Beta-Binomial distribution as discussed on page 25 of your textbook. As in part (c), you could just plug the correct values into the Beta-Binomial pdf given on that page, but I’m asking you to show me that the distribution given there is correct.**
+
+$$p(\tilde{y}|y) = \int_0^1p(\tilde{y}|\theta)p(\theta|y)d\theta$$
+
+$$=\int_0^1\binom{m}{\tilde{y}}\theta^m(1-\theta)^{m - \tilde{y}}
+\times
+\frac{\Gamma(\alpha + \beta  + n - y)}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}I_{[0, 1]}(\theta)d\theta$$
+
+$$=\binom{m}{\tilde{y}}\frac{\Gamma(\alpha + \beta  + n )}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}\int_0^1\theta^\tilde{y}(1-\theta)^{m - \tilde{y}}
+\times
+\theta^{y + \alpha - 1}(1 - \theta)^{n +\beta - y - 1}(\theta)d\theta$$
+
+$$=\binom{m}{\tilde{y}}\frac{\Gamma(\alpha + \beta  + n )}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}\int_0^1\theta^{\tilde{y} + y + \alpha - 1}(1-\theta)^{m - \tilde{y} + n +\beta - y - 1}d\theta$$
+
+$$=\binom{m}{\tilde{y}}\frac{\Gamma(\alpha + \beta  + n )}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}
+\frac{\Gamma(\tilde{y} + y + \alpha)\Gamma(m - \tilde{y} + n +\beta - y)}{\Gamma(\alpha + m + n +\beta)}
+\int_0^1
+\frac{\Gamma(\alpha + m + n +\beta)}{\Gamma(\tilde{y} + y + \alpha)\Gamma(m - \tilde{y} + n +\beta - y)}
+\theta^{\tilde{y} + y + \alpha - 1}(1-\theta)^{m - \tilde{y} + n +\beta - y - 1}d\theta$$
+
+$$=\binom{m}{\tilde{y}}\frac{\Gamma(\alpha + \beta  + n )}{\Gamma(y + \alpha)\Gamma(n + \beta - y)}
+\frac{\Gamma(\tilde{y} + y + \alpha)\Gamma(m - \tilde{y} + n +\beta - y)}{\Gamma(\alpha + m + n +\beta)}$$
+
+$$\therefore p(\tilde{y}|y) ~ BetaBinomial(\alpha = 2.5, \beta = 552.0, y = 40, n = 767, m = 854)$$
+
+##### 1e)
+
+```{r}
+pbb <- function(ytilde, a, b, y, n, m) {
+  
+  binom <- choose(m, ytilde)
+  g1 <- gamma(a + b + n)/(gamma(y + a) * gamma(n + b - y))
+  g2 <- gamma(ytilde + y + a) * gamma(n + m + b - y - ytilde) / gamma(a + b + n + m)
+  
+  binom * g1 * g2
+  
+}
+
+pbb(20, 2.5, 522.9, 40, 767, 854)
+
+library(VGAM)
+
+pbetabinom()
+
+```
+
+

@@ -54,7 +54,7 @@ Using Wesley Johnson's betabuster R function, from the epiR package, we see that
 
 This is a representative sample, but it doesn't represent what we need it to represent. So no, the informative prior is very much no good, because the wrong information has been elicited from the expert. For an informative prior to be useful, we must find a prior on the proportion of the population *being tested* that has COVID-19, not the population as a whole, because this is what our data are about. 
 
-Because the population being tested must satisfy some criteria in order to be tested, likely showing some minimum set of COVID-like symptoms (fever, dry cough, etc.), it would appear to me fair to argue that the point and boundary estimates given by the expert are too low for our data. The MLE for the prevalence of COVID ($\theta = \frac{40}{727}$ = 0.055 = 5.2%) agrees with this argument, as this is far, far greater than the expert's best guess of 0.275%. 
+Because the population being tested must satisfy some criteria in order to be tested, likely showing some minimum set of COVID-like symptoms (fever, dry cough, etc.), it would appear to me fair to argue that the point and boundary estimates given by the expert are too low for our data. The MLE for the prevalence of COVID ($\theta = \frac{40}{727}$ = 0.055 = 5.5%) agrees with this argument, as this is far, far greater than the expert's best guess of 0.275%. 
 
 In this case, I feel as though we really have neither a direct nor an inferential source of prior information for these data, and so I would not use an informative prior, but opt to use the non-informative Jeffrey's prior Beta($\frac{1}{2}$, $\frac{1}{2}$).
 

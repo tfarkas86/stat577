@@ -1,0 +1,80 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(R2jags)
+library(tidyverse)
+```
+```{r}
+bd_raw <- read_csv("../data/bcarotene.csv", 
+                   col_types = cols(ptid = col_factor())) 
+
+bd_means <- bd_raw %>%
+  group_by(ptid) %>%
+  summarize(bc_mean = mean(bcarot, na.rm=TRUE),
+            ve_mean = mean(vite, na.rm=TRUE))
+
+bc_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(bcarot), na.rm=TRUE)
+ve_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(vite), na.rm=TRUE)
+cauc_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(cauc), na.rm=TRUE)
+vauc_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(vauc), na.rm=TRUE)
+
+bd <- bd_raw %>%
+  filter(month > 3) %>%
+  mutate(bcarot_i = ifelse(is.na(bcarot), bc_mean, bcarot),
+         vite_i = ifelse(is.na(vite), ve_mean, vite),
+         cauc_i = ifelse(is.na(cauc), cauc_mean, cauc),
+         vauc_i = ifelse(is.na(vauc), vauc_mean, vauc),
+         bc_s = scale(bcarot_i),
+         ve_s = scale(vite_i), 
+         dose_s = scale(dose), 
+         age_s = scale(age),
+         male_s = ifelse(male == 0, -.5, .5), 
+         bmi_s = scale(bmi), 
+         chol_s = scale(chol), 
+         cauc_s = scale(cauc_i),
+         vauc_s = scale(vauc_i),
+         month_s = month - 4) %>%
+  slice(-4)
+  
+```
+
+```{r}
+
+jags_data <- list(n = nrow(bd), 
+                  n_patients = length(unique(bd$ptid)),
+                  dose = bd$dose,
+                  month = bd$month,
+                  bcarot = bd$bcarot,
+                  ptid= bd$ptid)
+
+params <- c("beta0", "beta1", "beta2", "beta3")
+
+inits <- function() {
+  list(
+    beta0 = 0, 
+    beta1 = 0,
+    beta2 = 0,
+    beta3 = 0,
+    tau_bc = .001,
+	  tau_g = .001,
+	tau_b0 = .001,
+	tau_b1 = .001,
+	tau_b2 = .001,
+	tau_b3 = .001
+  )
+}
+
+model <- "~/Dropbox/stat577/project/code/bcarotene_model_tef.txt"
+
+fit <- jags(jags_data, parameters.to.save=params, model.file=model, 
+            n.chains = 3)
+```
+
+
+
+

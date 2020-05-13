@@ -29,15 +29,19 @@ bd <- bd_raw %>%
          vite_i = ifelse(is.na(vite), ve_mean, vite),
          cauc_i = ifelse(is.na(cauc), cauc_mean, cauc),
          vauc_i = ifelse(is.na(vauc), vauc_mean, vauc),
-         bc_s = scale(bcarot_i),
-         ve_s = scale(vite_i), 
-         dose_s = scale(dose), 
-         age_s = scale(age),
+         bc_s = as.vector(scale(bcarot_i)),
+         ve_s = as.vector(scale(vite_i)), 
+         dose_s = as.vector(scale(dose)), 
+         age_s = as.vector(scale(age)),
          male_s = ifelse(male == 0, -.5, .5), 
-         bmi_s = scale(bmi), 
-         chol_s = scale(chol), 
-         cauc_s = scale(cauc_i),
-         vauc_s = scale(vauc_i))
+         bmi_s = as.vector(scale(bmi)), 
+         chol_s = as.vector(scale(chol)), 
+         cauc_s = as.vector(scale(cauc_i)),
+         vauc_s = as.vector(scale(vauc_i))
+         ) %>%
+  inner_join(bd_raw %>%
+  filter(month == 15) %>%
+  select(ptid))
   
 ```
 

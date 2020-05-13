@@ -9,7 +9,7 @@ editor_options:
 library(R2jags)
 library(tidyverse)
 ```
-```{r}
+```{r Data Prep}
 bd_raw <- read_csv("../data/bcarotene.csv", 
                    col_types = cols(ptid = col_factor())) 
 
@@ -24,35 +24,52 @@ cauc_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(cauc), na.rm=TRUE)
 vauc_mean <- mean(bd_raw %>% filter(month > 3) %>% pull(vauc), na.rm=TRUE)
 
 bd <- bd_raw %>%
-  filter(month > 3) %>%
+  group_by(ptid, month, dose, age, male, bmi, chol, cauc, vauc) %>%
+  summarize(bcarot = mean(bcarot), 
+            vite = mean(vite)) %>%
+  ungroup() %>%
   mutate(bcarot_i = ifelse(is.na(bcarot), bc_mean, bcarot),
          vite_i = ifelse(is.na(vite), ve_mean, vite),
          cauc_i = ifelse(is.na(cauc), cauc_mean, cauc),
          vauc_i = ifelse(is.na(vauc), vauc_mean, vauc),
-         bc_s = scale(bcarot_i),
-         ve_s = scale(vite_i), 
-         dose_s = scale(dose), 
-         age_s = scale(age),
+         bc_s = as.vector(scale(bcarot_i)),
+         ve_s = as.vector(scale(vite_i)), 
+         dose_s = as.vector(scale(dose)), 
+         age_s = as.vector(scale(age)),
          male_s = ifelse(male == 0, -.5, .5), 
-         bmi_s = scale(bmi), 
-         chol_s = scale(chol), 
-         cauc_s = scale(cauc_i),
-         vauc_s = scale(vauc_i),
-         month_s = month - 4) %>%
-  slice(-4)
+         bmi_s = as.vector(scale(bmi)), 
+         chol_s = as.vector(scale(chol)), 
+         cauc_s = as.vector(scale(cauc_i)),
+         vauc_s = as.vector(scale(vauc_i)),
+         month_s = month - 4)
+ #%>%
+  # inner_join(bd_raw %>%
+  #              filter(month == 15) %>%
+  #              select(ptid))
   
+  newptid <- c(1)
+  for(i in 2:nrow(bd)) {
+    if(bd$ptid[i] == bd$ptid[i-1]) {
+      newptid[i] <- newptid[i - 1]}
+    else newptid[i] <- newptid[i - 1] + 1
+  }
+  
+  bd$ptid_new <- newptid
+
 ```
 
-```{r}
+```{r Betacarotene Over Time}
 
 jags_data <- list(n = nrow(bd), 
                   n_patients = length(unique(bd$ptid)),
-                  dose = bd$dose,
-                  month = bd$month,
-                  bcarot = bd$bcarot,
-                  ptid= bd$ptid)
+                  dose = bd$dose_s,
+                  month = bd$month_s,
+                  bcarot = bd$bc_s,
+                  ptid= bd$ptid_new,
+                  bc_sd = sd(bd$bcarot, na.rm=TRUE), 
+                  dose_sd = sd(bd$dose))
 
-params <- c("beta0", "beta1", "beta2", "beta3")
+params <- c("beta0_orig", "beta1_orig", "beta2_orig", "beta3_orig")
 
 inits <- function() {
   list(
@@ -69,12 +86,222 @@ inits <- function() {
   )
 }
 
-model <- "~/Dropbox/stat577/project/code/bcarotene_model_tef.txt"
+model <- "~/Dropbox/stat577/project/code/bc_vs_dose_overtime_jags_mod.txt"
 
-fit <- jags(jags_data, parameters.to.save=params, model.file=model, 
+fit_bc <- jags(jags_data, 
+            parameters.to.save=params, 
+            model.file=model, 
             n.chains = 3)
+
+write.csv(fit_bc$BUGSoutput$summary, "../data/bc_out.csv", 
+          row.names = TRUE)
+
+#traceplot(fit)
+
+bc_est <- fit_bc$BUGSoutput$sims.list$beta0_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "intercept") %>%
+  bind_rows(fit_bc$BUGSoutput$sims.list$beta1_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose")) %>% 
+  bind_rows(fit_bc$BUGSoutput$sims.list$beta2_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "month")) %>%
+  bind_rows(fit_bc$BUGSoutput$sims.list$beta3_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose x month")) %>%
+  select(parameter, estimate = V1)
+
+bc_est %>%
+  ggplot() +
+  geom_density(aes(x = estimate)) + 
+  facet_wrap(~ parameter, scales = "free")
+  ggsave("../figures/bc_density.png")
 ```
 
 
+```{r Check with lm}
 
+m1 <- lm(bc_s ~ dose_s * month_s, data = bd)
+summary(m1)
+```
+```{r Vitamin E Over Time}
+
+jags_data <- list(n = nrow(bd), 
+                  n_patients = length(unique(bd$ptid)),
+                  dose = bd$dose_s,
+                  month = bd$month_s,
+                  ve = bd$ve_s,
+                  ptid= bd$ptid_new,
+                  ve_sd = sd(bd$vite, na.rm=TRUE), 
+                  dose_sd = sd(bd$dose))
+
+params <- c("beta0_orig", "beta1_orig", "beta2_orig", "beta3_orig")
+
+inits <- function() {
+  list(
+    beta0 = 0, 
+    beta1 = 0,
+    beta2 = 0,
+    beta3 = 0,
+    tau_bc = .001,
+	  tau_g = .001,
+	tau_b0 = .001,
+	tau_b1 = .001,
+	tau_b2 = .001,
+	tau_b3 = .001
+  )
+}
+
+model <- "~/Dropbox/stat577/project/code/ve_vs_dose_overtime_jags_mod.txt"
+
+fit_ve <- jags(jags_data, 
+            parameters.to.save=params, 
+            model.file=model, 
+            n.chains = 3)
+
+write.csv(fit_ve$BUGSoutput$summary, "../data/ve_out.csv", 
+          row.names = TRUE)
+
+ve_est <- fit_ve$BUGSoutput$sims.list$beta0_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "intercept") %>%
+  bind_rows(fit_ve$BUGSoutput$sims.list$beta1_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose")) %>% 
+  bind_rows(fit_ve$BUGSoutput$sims.list$beta2_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "month")) %>%
+  bind_rows(fit_ve$BUGSoutput$sims.list$beta3_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose x month")) %>%
+  select(parameter, estimate = V1)
+
+ve_est %>%
+  ggplot() +
+  geom_density(aes(x = estimate)) + 
+  facet_wrap(~ parameter, scales = "free")
+  ggsave("../figures/ve_density.png")
+
+#traceplot(fit)
+```
+
+```{r Vitamin E vs Betacarotene}
+
+jags_data <- list(n = nrow(bd), 
+                  n_patients = length(unique(bd$ptid)),
+                  ve_s = bd$ve_s,
+                  bc_s = bd$bc_s,
+                  ptid= bd$ptid_new)
+
+params <- c("beta0", "beta1")
+
+inits <- function() {
+  list(
+    beta0 = 0, 
+    beta1 = 0,
+    beta2 = 0,
+    beta3 = 0,
+    tau_bc = .001,
+	  tau_g = .001,
+	tau_b0 = .001,
+	tau_b1 = .001,
+	tau_b2 = .001,
+	tau_b3 = .001
+  )
+}
+
+model <- "~/Dropbox/stat577/project/code/ve_vs_bc_jags_mod.txt"
+
+fit_cor <- jags(jags_data, 
+            parameters.to.save=params, 
+            model.file=model, 
+            n.chains = 3)
+
+write.csv(fit_cor$BUGSoutput$summary, "../data/bc_cor_out.csv", 
+          row.names = TRUE)
+
+bc_cor <- fit_cor$BUGSoutput$sims.list$beta0 %>%
+  as_tibble() %>%
+  mutate(parameter = "intercept") %>%
+  bind_rows(fit_cor$BUGSoutput$sims.list$beta1 %>%
+  as_tibble() %>%
+  mutate(parameter = "vitamin E")) %>%
+  select(parameter, estimate = V1)
+
+bc_cor %>%
+  ggplot() +
+  geom_density(aes(x = estimate)) + 
+  facet_wrap(~ parameter, scales = "free")
+  ggsave("../figures/cor_density.png", width = 7, height = 3.5)
+#traceplot(fit)
+```
+
+
+```{r Betacarotene Over Time}
+
+jags_data <- list(n = nrow(bd), 
+                  n_patients = length(unique(bd$ptid)),
+                  dose = bd$dose_s,
+                  age = bd$age_s,
+                  chol = bd$chol_s,
+                  bmi = bd$bmi_s,
+                  bcarot = bd$bc_s,
+                  ptid= bd$ptid_new,
+                  bc_sd = sd(bd$bcarot, na.rm=TRUE), 
+                  dose_sd = sd(bd$dose),
+                  age_sd = sd(bd$age), 
+                  chol_sd = sd(bd$chol), 
+                  bmi_sd = sd(bd$bmi))
+
+params <- c("beta0_orig", "beta1_orig", "beta2_orig", "beta3_orig",
+            "beta4_orig", "beta5_orig", "beta6_orig", "beta7_orig")
+
+
+model <- "~/Dropbox/stat577/project/code/bc_vs_dose_interaction_jags_mod.txt"
+
+fit_bc_int <- jags(jags_data, 
+            parameters.to.save=params, 
+            model.file=model, 
+            n.chains = 3)
+
+write.csv(fit_bc_int$BUGSoutput$summary, "../data/bc_int_out.csv", 
+          row.names = TRUE)
+
+int_est <- fit_bc_int$BUGSoutput$sims.list$beta0_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "intercept") %>%
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta1_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose")) %>% 
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta2_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "age")) %>%
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta3_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "cholesterol")) %>%
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta4_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "BMI")) %>%
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta5_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose x age")) %>%
+  bind_rows(fit_bc_int$BUGSoutput$sims.list$beta6_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose x chelesterol")) %>%
+   bind_rows(fit_bc_int$BUGSoutput$sims.list$beta7_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "dose x BMI")) %>%
+  select(parameter, estimate = V1)
+
+int_est %>%
+  ggplot() +
+  geom_density(aes(x = estimate)) + 
+  facet_wrap(~ parameter, scales = "free")
+  ggsave("../figures/int_density.png")
+
+
+#traceplot(fit_bc_int, ask = FALSE, mfrow = c(3, 3))
+
+```
 

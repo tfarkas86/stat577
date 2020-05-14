@@ -25,20 +25,24 @@ model{
 	#	beta4 ~ dnorm( 0, tau_b4 )
   #	beta5 ~ dnorm( 0, tau_b5 )
 	
-	tau_bc ~ dgamma(0.001, 0.001)
-	tau_g ~ dgamma(0.001, 0.001)
-	tau_b0 ~ dgamma(0.001, 0.001)
-	tau_b1 ~ dgamma(0.001, 0.001)
-	tau_b2 ~ dgamma(0.001, 0.001)
-	tau_b3 ~ dgamma(0.001, 0.001)
- # tau_b4 ~ dgamma(0.001, 0.001)
- # tau_b5 ~ dgamma(0.001, 0.001)
+	tau_bc ~ dgamma(0.01, 0.01)
+	tau_g ~ dgamma(0.01, 0.01)
+	tau_b0 ~ dgamma(0.01, 0.01)
+	tau_b1 ~ dgamma(0.01, 0.01)
+	tau_b2 ~ dgamma(0.01, 0.01)
+	tau_b3 ~ dgamma(0.01, 0.01)
+ # tau_b4 ~ dgamma(0.01, 0.01)
+ # tau_b5 ~ dgamma(0.01, 0.01)
 	
-	sigma_bc <- pow(tau_bc,-0.5)
-	sigma_g <- pow(tau_g,-0.5)
+	sigma_bc <- pow(tau_bc, -0.5)
+	sigma_g <- pow(tau_g, -0.5)
+	sigma_0 <- pow(tau_b0, -0.5)
+	sigma_1 <- pow(tau_b1, -0.5)
+	sigma_2 <- pow(tau_b2, -0.5)
+	sigma_3 <- pow(tau_b3, -0.5)
 	
 	beta0_orig <- beta0 * bc_sd 
-	beta1_orig <- 15 * exp(beta1) * bc_sd / dose_sd
+	beta1_orig <- 15 * beta1 * bc_sd / dose_sd
 	beta2_orig <- beta2 * bc_sd
 	beta3_orig <- beta3 * bc_sd  
 #	beta4_orig <- 15 * beta4 * bc_sd  / dose_sd

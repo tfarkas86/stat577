@@ -40,8 +40,8 @@ bd <- bd_raw %>%
          vauc_s = as.vector(scale(vauc_i))
          ) %>%
   inner_join(bd_raw %>%
-  filter(month == 15) %>%
-  select(ptid))
+               filter(month == 15) %>%
+               select(ptid))
   
 ```
 

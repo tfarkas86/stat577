@@ -72,7 +72,12 @@ bd %>%
   ggplot() +
   geom_line(aes(x=month, y=bcarot, color=ptid))
 
-ggsave("../figures/spaghetti_betacarotene.pdf")
+bd %>% 
+  ggplot() +
+  geom_line(aes(x=month, y = vite, color = ptid)) + 
+  facet_wrap(~ dose)
+
+ggsave("../figures/spaghetti_bcarot.pdf")
 ```
 
 
@@ -271,9 +276,9 @@ int_est %>%
 
 ```{r Vitamin E Over Time}
 
-jags_data <- list(n = nrow(bd1), 
+jags_data_ve <- list(n = nrow(bd1), 
                   n_patients = length(unique(bd1$ptid)),
-                  dose = (bd1$dose),
+                  dose = bd1$dose_s,
                   month = bd1$month_s,
                   ve = bd1$ve_s,
                   ptid= bd1$ptid_new,
@@ -288,12 +293,12 @@ model_ve1 <- "~/Dropbox/stat577/project/code/ve_vs_dose_overtime_jags_mod1.txt"
 model_ve2 <- "~/Dropbox/stat577/project/code/ve_vs_dose_overtime_jags_mod2.txt"
 
 
-fit_ve1 <- jags(jags_data, 
+fit_ve1 <- jags(jags_data_ve, 
             parameters.to.save=params, 
             model.file=model_ve1, 
             n.chains = 3,
             n.iter = 10000, n.burnin = 1000)
-fit_ve2 <- jags(jags_data, 
+fit_ve2 <- jags(jags_data_ve, 
             parameters.to.save=params, 
             model.file=model_ve2, 
             n.chains = 3,
@@ -329,18 +334,18 @@ diog_data %>%
   facet_wrap(~ variable, scales = "free")
 ggsave("../figures/ve_diogs.png")
 
-ve_est <- fit_ve$BUGSoutput$sims.list$beta0_orig %>%
+ve_est <- fit_ve1$BUGSoutput$sims.list$beta0_orig %>%
   as_tibble() %>%
   mutate(parameter = "intercept") %>%
-  bind_rows(fit_ve$BUGSoutput$sims.list$beta1_orig %>%
+  bind_rows(fit_ve1$BUGSoutput$sims.list$beta1_orig %>%
   as_tibble() %>%
   mutate(parameter = "dose")) %>% 
-  bind_rows(fit_ve$BUGSoutput$sims.list$beta2_orig %>%
+  bind_rows(fit_ve1$BUGSoutput$sims.list$beta2_orig %>%
   as_tibble() %>%
-  mutate(parameter = "month: linear")) %>%
-  # bind_rows(fit_ve$BUGSoutput$sims.list$beta3_orig %>%
-  # as_tibble() %>%
-  # mutate(parameter = "month: quadratic")) %>%
+  mutate(parameter = "month")) %>%
+  bind_rows(fit_ve1$BUGSoutput$sims.list$beta3_orig %>%
+  as_tibble() %>%
+  mutate(parameter = "month * dose")) %>%
   select(parameter, estimate = V1)
 
 ve_est %>%
@@ -354,45 +359,30 @@ ve_est %>%
 
 ```{r Vitamin E vs Betacarotene}
 
-jags_data <- list(n = nrow(bd), 
-                  n_patients = length(unique(bd$ptid)),
-                  ve_s = bd$ve_s,
-                  bc_s = bd$bc_s,
-                  ptid= bd$ptid_new)
+jags_data_corr <- list(n = nrow(bd1), 
+                  n_patients = length(unique(bd1$ptid_new)),
+                  ve_s = bd1$ve_s,
+                  bc_s = bd1$bc_ls,
+                  ptid= bd1$ptid_new)
 
 params <- c("beta0", "beta1")
 
-inits <- function() {
-  list(
-    beta0 = 0, 
-    beta1 = 0,
-    beta2 = 0,
-    beta3 = 0,
-    tau_bc = .001,
-	  tau_g = .001,
-	tau_b0 = .001,
-	tau_b1 = .001,
-	tau_b2 = .001,
-	tau_b3 = .001
-  )
-}
+model_corr1 <- "~/Dropbox/stat577/project/code/ve_vs_bc_jags_mod1.txt"
 
-model <- "~/Dropbox/stat577/project/code/ve_vs_bc_jags_mod.txt"
-
-fit_cor <- jags(jags_data, 
+fit_cor1 <- jags(jags_data_corr, 
             parameters.to.save=params, 
-            model.file=model, 
+            model.file=model_corr1, 
             n.chains = 3)
 
-write.csv(fit_cor$BUGSoutput$summary, "../data/bc_cor_out.csv", 
+write.csv(fit_cor1$BUGSoutput$summary, "../data/bc_cor_out1.csv", 
           row.names = TRUE)
 
-bc_cor <- fit_cor$BUGSoutput$sims.list$beta0 %>%
+bc_cor <- fit_cor1$BUGSoutput$sims.list$beta0 %>%
   as_tibble() %>%
   mutate(parameter = "intercept") %>%
-  bind_rows(fit_cor$BUGSoutput$sims.list$beta1 %>%
+  bind_rows(fit_cor1$BUGSoutput$sims.list$beta1 %>%
   as_tibble() %>%
-  mutate(parameter = "vitamin E")) %>%
+  mutate(parameter = "betacarotene")) %>%
   select(parameter, estimate = V1)
 
 bc_cor %>%
@@ -401,4 +391,9 @@ bc_cor %>%
   facet_wrap(~ parameter, scales = "free")
   ggsave("../figures/cor_density.png", width = 7, height = 3.5)
 #traceplot(fit)
+  
+  bd1 %>% 
+    ggplot() + 
+    geom_point(aes(x=ve_s, y=bc_ls))
+    ggsave("../figures/ve_bc_cor.png", width = 7, height = 7)
 ```
